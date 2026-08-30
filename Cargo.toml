@@ -1,0 +1,23 @@
+[package]
+name = "poppy"
+version = "0.1.0"
+authors = ["mniyk <my.name.is.yohei.kono@gmail.com>"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+dioxus = { version = "0.7.1", features = [] }
+open = "5"
+urlencoding = "2"
+directories = "5"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+walkdir = "2"
+image = "0.25"
+
+[features]
+default = ["desktop"]
+web = ["dioxus/web"]
+desktop = ["dioxus/desktop"]
+mobile = ["dioxus/mobile"]

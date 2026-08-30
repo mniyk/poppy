@@ -1,0 +1,7 @@
+[application]
+name = "poppy"
+default_platform = "desktop"
+
+[bundle]
+identifier = "com.mniyk.poppy"
+publisher = "mniyk"
