@@ -1,51 +1,55 @@
-# Development
+# Poppy
 
-Your new bare-bones project includes minimal organization with a single `main.rs` file and a few assets.
+A keyboard-driven launcher for Windows. Press a hotkey and it pops up: launch apps, open bookmarks, search the web. Named after that "pop". Built with Rust and Dioxus.
 
-```
-project/
-├─ assets/ # Any assets that are used by the app should be placed here
-├─ src/
-│  ├─ main.rs # main.rs is the entry point to your application and currently contains all components for the app
-├─ Cargo.toml # The Cargo.toml file defines the dependencies and feature flags for your project
-```
+## Features
 
-### Automatic Tailwind (Dioxus 0.7+)
+- **Global hotkey** — summon it from anywhere with `Ctrl+Alt+R`
+- **App launcher** — search and start anything in your Start Menu
+- **Bookmarks** — open URLs you've registered in a config file
+- **Web search** — search with Google or DuckDuckGo
+- **Runs in the tray** — stays resident after you close it, so the next call is instant
 
-As of Dioxus 0.7, there no longer is a need to manually install tailwind. Simply `dx serve` and you're good to go!
+## Usage
 
-Automatic tailwind is supported by checking for a file called `tailwind.css` in your app's manifest directory (next to Cargo.toml). To customize the file, use the dioxus.toml:
+| Action | Key |
+| --- | --- |
+| Show / hide | `Ctrl+Alt+R` |
+| Move through results | `↑` `↓` |
+| Run | `Enter` |
+| Close | `Esc` |
 
-```toml
-[application]
-tailwind_input = "my.css"
-tailwind_output = "assets/out.css" # also customize the location of the out file!
-```
+Clicking outside the window also closes it.
+To exit, right-click the tray icon and choose **Quit**.
 
-### Tailwind Manual Install
+## Configuration
 
-To use tailwind plugins or manually customize tailwind, you can can install the Tailwind CLI and use it directly.
+Bookmarks live in a TOML file.
 
-### Tailwind
-1. Install npm: https://docs.npmjs.com/downloading-and-installing-node-js-and-npm
-2. Install the Tailwind CSS CLI: https://tailwindcss.com/docs/installation/tailwind-cli
-3. Run the following command in the root of the project to start the Tailwind CSS compiler:
+    %APPDATA%\poppy\config\bookmarks.toml
 
-```bash
-npx @tailwindcss/cli -i ./input.css -o ./assets/tailwind.css --watch
-```
+A starter file is created on first launch. You can also open it from Poppy itself:
+type `config` and run **Open Bookmarks**.
 
-### Serving Your App
+    [[bookmark]]
+    name = "GitHub"
+    url = "https://github.com"
+    keywords = ["gh"]
 
-Run the following command in the root of your project to start developing with the default platform:
+`keywords` are aliases that will match in search. Edits take effect the next time you summon Poppy.
 
-```bash
-dx serve
-```
+## Installation
 
-To run for a different platform, use the `--platform platform` flag. E.g.
-```bash
-dx serve --platform desktop
-```
+Download the installer from [Releases](https://github.com/mniyk/poppy/releases) and run it.
 
+## Development
 
+    dx serve                                # start the dev server
+    dx bundle --release --platform desktop  # build the installer
+
+Built with [Dioxus](https://dioxuslabs.com/) 0.7.
+Tailwind CSS is compiled by the Dioxus CLI, so no extra setup is needed.
+
+## License
+
+MIT
