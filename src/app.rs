@@ -14,6 +14,7 @@ use dioxus::prelude::*;
 use crate::provider::{Candidate, Provider};
 use crate::providers::{
     app_launcher::AppLauncherProvider, bookmark::BookmarkProvider, websearch::WebSearchProvider,
+    window::WindowProvider,
 };
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");
@@ -29,6 +30,7 @@ pub fn App() -> Element {
     // プロバイダ一覧(この順に候補が並ぶ)
     let mut providers = use_signal(|| {
         let list: Vec<Box<dyn Provider>> = vec![
+            Box::new(WindowProvider::new()),
             Box::new(BookmarkProvider::new()),
             Box::new(AppLauncherProvider::new()),
             Box::new(WebSearchProvider),

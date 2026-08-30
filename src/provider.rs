@@ -3,6 +3,8 @@
 pub enum Action {
     /// URLまたはファイルパスを既定のアプリで開く
     Open(String),
+    /// 指定したウィンドウを前面に出す
+    FocusWindow(isize),
 }
 
 impl Action {
@@ -13,6 +15,9 @@ impl Action {
                     eprintln!("開けませんでした ({target}): {err}");
                 }
             }
+            Action::FocusWindow(hwnd) => {
+                crate::providers::window::focus(*hwnd);
+            }
         }
     }
 }
@@ -22,7 +27,7 @@ impl Action {
 pub struct Candidate {
     /// 候補に表示する文字列
     pub label: String,
-    /// 提供元のプロバイダ名(将来グループ表示などに使う)
+    /// 提供元のプロバイダ名
     pub source: &'static str,
     /// 実行時の動作
     pub action: Action,
