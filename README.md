@@ -5,8 +5,10 @@ A keyboard-driven launcher for Windows. Press a hotkey and it pops up: launch ap
 ## Features
 
 - **Global hotkey** — summon it from anywhere with `Ctrl+Alt+R`
+- **Window switcher** — jump to any open window by name
 - **App launcher** — search and start anything in your Start Menu
 - **Bookmarks** — open URLs you've registered in a config file
+- **Projects** — open a project folder in VS Code
 - **Web search** — search with Google or DuckDuckGo
 - **Runs in the tray** — stays resident after you close it, so the next call is instant
 
@@ -24,19 +26,33 @@ To exit, right-click the tray icon and choose **Quit**.
 
 ## Configuration
 
-Bookmarks live in a TOML file.
+Config files live here:
 
-    %APPDATA%\poppy\config\bookmarks.toml
+    %APPDATA%\poppy\config\
 
-A starter file is created on first launch. You can also open it from Poppy itself:
-type `config` and run **Open Bookmarks**.
+Starter files are created on first launch. You can also open them from Poppy itself —
+type `open` and run **Open Bookmarks** or **Open Projects**.
+
+Edits take effect the next time you summon Poppy.
+
+### bookmarks.toml
 
     [[bookmark]]
     name = "GitHub"
     url = "https://github.com"
     keywords = ["gh"]
 
-`keywords` are aliases that will match in search. Edits take effect the next time you summon Poppy.
+### projects.toml
+
+    [[project]]
+    name = "poppy"
+    path = "C:\\Users\\mniyk\\Work\\poppy"
+    keywords = ["launcher"]
+
+`keywords` are aliases that will match in search.
+
+Opening a project requires the `code` command to be on your PATH
+(enable it when installing VS Code).
 
 ## Installation
 

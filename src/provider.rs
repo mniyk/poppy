@@ -5,6 +5,8 @@ pub enum Action {
     Open(String),
     /// 指定したウィンドウを前面に出す
     FocusWindow(isize),
+    /// VSCode で指定したパスを開く
+    OpenInVscode(String),
 }
 
 impl Action {
@@ -17,6 +19,9 @@ impl Action {
             }
             Action::FocusWindow(hwnd) => {
                 crate::providers::window::focus(*hwnd);
+            }
+            Action::OpenInVscode(path) => {
+                crate::providers::project::open_in_vscode(path);
             }
         }
     }
