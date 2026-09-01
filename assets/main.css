@@ -22,3 +22,21 @@ body > * {
 *::-webkit-scrollbar {
     display: none;
 }
+
+/* dx serve の開発用トースト(#__dx-toast)がウィンドウ全体を覆う透明なオーバーレイとして
+   常に最前面(pointer-events: auto)に居座り、実際のクリックを全て奪ってしまうための対策。
+   本番ビルド(dx serve を使わない実行)には存在しない要素なので、開発時のみ影響する。 */
+#__dx-toast {
+    pointer-events: none;
+}
+
+/* number input の上下ボタン(スピンボタン)を非表示にする */
+input[type="number"] {
+    -moz-appearance: textfield;
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
