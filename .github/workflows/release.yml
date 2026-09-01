@@ -10,6 +10,8 @@ jobs:
   build:
     name: Build (Windows)
     runs-on: windows-latest
+    env:
+      DIOXUS_CLI_VERSION: "0.7.10"
 
     steps:
       - name: Checkout
@@ -21,8 +23,16 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
+      - name: Cache Dioxus CLI
+        id: cache-dx-cli
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/dx.exe
+          key: ${{ runner.os }}-dx-cli-${{ env.DIOXUS_CLI_VERSION }}
+
       - name: Install Dioxus CLI
-        run: cargo install --locked dioxus-cli
+        if: steps.cache-dx-cli.outputs.cache-hit != 'true'
+        run: cargo install --locked dioxus-cli --version ${{ env.DIOXUS_CLI_VERSION }}
 
       - name: Build
         run: dx bundle --release --platform desktop

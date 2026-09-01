@@ -259,7 +259,7 @@ fn SearchView(
     rsx! {
         // 入力欄
         input {
-            class: "w-full px-6 py-5 text-2xl bg-transparent outline-none border-0 border-b border-neutral-700 placeholder:text-neutral-500",
+            class: "w-full px-6 py-5 text-2xl bg-transparent outline-none border-0 placeholder:text-neutral-500",
             placeholder: "検索…",
             value: "{current_query}",
             oninput: move |e| {

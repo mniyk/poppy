@@ -261,10 +261,6 @@
     border-style: var(--tw-border-style);
     border-width: 0px;
   }
-  .border-b {
-    border-bottom-style: var(--tw-border-style);
-    border-bottom-width: 1px;
-  }
   .border-neutral-700 {
     border-color: var(--color-neutral-700);
   }
