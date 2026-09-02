@@ -360,6 +360,7 @@ fn SettingsView(cfg: Signal<config::Config>, view: Signal<View>) -> Element {
     let width = current.window.width;
     let height = current.window.height;
     let opacity = current.window.opacity;
+    let opacity_pct = ((opacity - 0.3) / (1.0 - 0.3) * 100.0).clamp(0.0, 100.0);
     let p = current.providers.clone();
     let current_message = message.read().clone();
 
@@ -434,7 +435,8 @@ fn SettingsView(cfg: Signal<config::Config>, view: Signal<View>) -> Element {
                 }
                 input {
                     r#type: "range",
-                    class: "w-full",
+                    class: "range-slider w-full",
+                    style: "background: linear-gradient(to right, #a3a3a3 0%, #a3a3a3 {opacity_pct}%, #404040 {opacity_pct}%, #404040 100%);",
                     min: "0.3",
                     max: "1",
                     step: "0.05",
@@ -500,16 +502,26 @@ fn SettingsView(cfg: Signal<config::Config>, view: Signal<View>) -> Element {
     }
 }
 
-/// チェックボックス1行分
+/// トグルスイッチ1行分
 #[component]
 fn ProviderToggle(label: String, checked: bool, on_toggle: EventHandler<bool>) -> Element {
     rsx! {
         label {
-            class: "flex items-center gap-2 cursor-pointer",
-            input {
-                r#type: "checkbox",
-                checked,
-                onchange: move |e| on_toggle.call(e.checked()),
+            class: "flex items-center gap-3 cursor-pointer select-none",
+            span {
+                class: "relative inline-flex h-6 w-11 shrink-0",
+                input {
+                    r#type: "checkbox",
+                    class: "peer sr-only",
+                    checked,
+                    onchange: move |e| on_toggle.call(e.checked()),
+                }
+                span {
+                    class: "absolute inset-0 rounded-full bg-neutral-700 peer-checked:bg-neutral-300 transition-colors",
+                }
+                span {
+                    class: "absolute left-1 top-1 h-4 w-4 rounded-full bg-neutral-100 peer-checked:bg-neutral-900 transition-[transform,background-color] peer-checked:translate-x-5",
+                }
             }
             span { class: "text-sm", "{label}" }
         }

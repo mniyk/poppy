@@ -40,3 +40,24 @@ input[type="number"]::-webkit-inner-spin-button {
     -webkit-appearance: none;
     margin: 0;
 }
+
+/* レンジスライダー: ブラウザ既定の見た目を UI のダークトーンに合わせて置き換える。
+   トラックの塗り分け(つまみより左側を青く見せる)は style 属性の linear-gradient で行う */
+input.range-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    border-radius: 9999px;
+    outline: none;
+}
+
+input.range-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #f5f5f5;
+    cursor: pointer;
+    border: none;
+}
