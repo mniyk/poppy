@@ -141,7 +141,11 @@ pub fn App() -> Element {
 
     // ウィンドウの外にフォーカスが移ったら隠す
     // (JS の window blur イベントは WebView2 内部でのクリック時にも誤発火するため、
-    //  OS レベルのネイティブなフォーカスイベントを使う)
+    //  OS レベルのネイティブなフォーカスイベントを使う。
+    //  非表示→表示の直後は、フォーカスが親ウィンドウと WebView2 の子要素の間を
+    //  行き来する影響で Focused イベントが true/false と短時間に何度も飛んでくることが
+    //  あるため、イベント単体では判断せず、少し待ってから実際のフォーカス状態を
+    //  window.is_focused() で確認してから隠す)
     use_wry_event_handler({
         let window = window.clone();
         move |event, _target| {
@@ -151,7 +155,13 @@ pub fn App() -> Element {
             } = event
             {
                 if !focused {
-                    window.set_visible(false);
+                    let window = window.clone();
+                    spawn(async move {
+                        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+                        if !window.is_focused() {
+                            window.set_visible(false);
+                        }
+                    });
                 }
             }
         }

@@ -3797,6 +3797,7 @@ dependencies = [
  "image",
  "open",
  "serde",
+ "tokio",
  "toml",
  "urlencoding",
  "walkdir",
