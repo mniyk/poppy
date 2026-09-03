@@ -7,6 +7,8 @@ pub enum Action {
     FocusWindow(isize),
     /// VSCode で指定したパスを開く
     OpenInVscode(String),
+    /// 文字列をクリップボードにコピーする
+    CopyToClipboard(String),
 }
 
 impl Action {
@@ -22,6 +24,14 @@ impl Action {
             }
             Action::OpenInVscode(path) => {
                 crate::providers::project::open_in_vscode(path);
+            }
+            Action::CopyToClipboard(text) => {
+                // WebView2 のカスタムアセットオリジンはセキュアコンテキストと見なされず
+                // navigator.clipboard が使えないため、OS のクリップボードに直接書き込む
+                match arboard::Clipboard::new().and_then(|mut c| c.set_text(text.clone())) {
+                    Ok(()) => {}
+                    Err(err) => eprintln!("クリップボードにコピーできませんでした: {err}"),
+                }
             }
         }
     }

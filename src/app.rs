@@ -16,7 +16,7 @@ use crate::config;
 use crate::provider::{Candidate, Provider};
 use crate::providers::{
     app_launcher::AppLauncherProvider, bookmark::BookmarkProvider, project::ProjectProvider,
-    websearch::WebSearchProvider, window::WindowProvider,
+    snippet::SnippetProvider, websearch::WebSearchProvider, window::WindowProvider,
 };
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");
@@ -44,6 +44,7 @@ pub fn App() -> Element {
             Box::new(WindowProvider::new()),
             Box::new(ProjectProvider::new()),
             Box::new(BookmarkProvider::new()),
+            Box::new(SnippetProvider::new()),
             Box::new(AppLauncherProvider::new()),
             Box::new(WebSearchProvider),
         ];
@@ -58,6 +59,7 @@ pub fn App() -> Element {
         current.providers.window,
         current.providers.project,
         current.providers.bookmark,
+        current.providers.snippet,
         current.providers.app,
         current.providers.websearch,
     ];
@@ -468,6 +470,11 @@ fn SettingsView(cfg: Signal<config::Config>, view: Signal<View>) -> Element {
                         label: "ブックマーク",
                         checked: p.bookmark,
                         on_toggle: move |v| cfg.write().providers.bookmark = v,
+                    }
+                    ProviderToggle {
+                        label: "スニペット",
+                        checked: p.snippet,
+                        on_toggle: move |v| cfg.write().providers.snippet = v,
                     }
                     ProviderToggle {
                         label: "アプリ起動",
