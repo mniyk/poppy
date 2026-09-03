@@ -12,6 +12,8 @@ pub enum Action {
     /// AIに質問する(非同期処理が必要なため、UI側でEnter入力時に
     /// 特別扱いして実行する。run() からは呼ばれない)
     AskLlm(String),
+    /// シェルコマンドを実行する(confirm が true なら実行前に確認ダイアログを出す)
+    RunCommand { command: String, confirm: bool },
 }
 
 impl Action {
@@ -37,8 +39,54 @@ impl Action {
                 }
             }
             Action::AskLlm(_) => {}
+            Action::RunCommand { command, confirm } => {
+                if *confirm && !confirm_dialog(command) {
+                    return;
+                }
+                run_command(command);
+            }
         }
     }
+}
+
+/// 「実行しますか?」の確認ダイアログを出し、Yes が選ばれたかを返す
+fn confirm_dialog(command: &str) -> bool {
+    use windows::core::PCWSTR;
+    use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, IDYES, MB_ICONWARNING, MB_YESNO};
+
+    let text = to_wide(&format!("次のコマンドを実行しますか?\n\n{command}"));
+    let caption = to_wide("Poppy");
+
+    let result = unsafe {
+        MessageBoxW(
+            None,
+            PCWSTR(text.as_ptr()),
+            PCWSTR(caption.as_ptr()),
+            MB_YESNO | MB_ICONWARNING,
+        )
+    };
+
+    result == IDYES
+}
+
+/// cmd.exe 経由でコマンドを実行する(結果を待たず、コンソールウィンドウも出さない)
+fn run_command(command: &str) {
+    use std::os::windows::process::CommandExt;
+
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+    let result = std::process::Command::new("cmd")
+        .args(["/C", command])
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn();
+
+    if let Err(err) = result {
+        eprintln!("コマンドを実行できませんでした ({command}): {err}");
+    }
+}
+
+fn to_wide(text: &str) -> Vec<u16> {
+    text.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
 /// 候補1件分

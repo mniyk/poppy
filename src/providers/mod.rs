@@ -1,6 +1,7 @@
 pub mod app_launcher;
 pub mod bookmark;
 pub mod clipboard;
+pub mod command;
 pub mod llm;
 pub mod project;
 pub mod snippet;

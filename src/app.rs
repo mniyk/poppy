@@ -16,8 +16,9 @@ use crate::config;
 use crate::provider::{Action, Candidate, Provider};
 use crate::providers::{
     app_launcher::AppLauncherProvider, bookmark::BookmarkProvider, clipboard,
-    clipboard::ClipboardProvider, llm::LlmProvider, project::ProjectProvider,
-    snippet::SnippetProvider, websearch::WebSearchProvider, window::WindowProvider,
+    clipboard::ClipboardProvider, command::CommandProvider, llm::LlmProvider,
+    project::ProjectProvider, snippet::SnippetProvider, websearch::WebSearchProvider,
+    window::WindowProvider,
 };
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");
@@ -84,6 +85,7 @@ pub fn App() -> Element {
             Box::new(ProjectProvider::new()),
             Box::new(BookmarkProvider::new()),
             Box::new(SnippetProvider::new()),
+            Box::new(CommandProvider::new()),
             Box::new(AppLauncherProvider::new()),
             Box::new(WebSearchProvider),
         ];
@@ -133,6 +135,7 @@ pub fn App() -> Element {
         current.providers.project,
         current.providers.bookmark,
         current.providers.snippet,
+        current.providers.command,
         current.providers.app,
         current.providers.websearch,
     ];
@@ -638,6 +641,11 @@ fn SettingsView(
                         label: "スニペット",
                         checked: p.snippet,
                         on_toggle: move |v| cfg.write().providers.snippet = v,
+                    }
+                    ProviderToggle {
+                        label: "コマンド実行",
+                        checked: p.command,
+                        on_toggle: move |v| cfg.write().providers.command = v,
                     }
                     ProviderToggle {
                         label: "アプリ起動",
