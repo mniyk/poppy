@@ -10,6 +10,7 @@ pub struct Config {
     pub general: General,
     pub window: Window,
     pub providers: Providers,
+    pub llm: Llm,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -37,6 +38,17 @@ pub struct Providers {
     pub snippet: bool,
     pub app: bool,
     pub websearch: bool,
+    pub llm: bool,
+    pub clipboard: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Llm {
+    /// Ollama サーバーのアドレス
+    pub host: String,
+    /// 使用するモデル名
+    pub model: String,
 }
 
 impl Default for Config {
@@ -45,6 +57,7 @@ impl Default for Config {
             general: General::default(),
             window: Window::default(),
             providers: Providers::default(),
+            llm: Llm::default(),
         }
     }
 }
@@ -76,6 +89,17 @@ impl Default for Providers {
             snippet: true,
             app: true,
             websearch: true,
+            llm: true,
+            clipboard: true,
+        }
+    }
+}
+
+impl Default for Llm {
+    fn default() -> Self {
+        Self {
+            host: "http://localhost:11434".to_string(),
+            model: "gemma3:4b".to_string(),
         }
     }
 }
