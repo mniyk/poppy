@@ -13,9 +13,10 @@ use dioxus::document;
 use dioxus::prelude::*;
 
 use crate::config;
-use crate::provider::{Candidate, Provider};
+use crate::provider::{Action, Candidate, Provider};
 use crate::providers::{
-    app_launcher::AppLauncherProvider, bookmark::BookmarkProvider, project::ProjectProvider,
+    app_launcher::AppLauncherProvider, bookmark::BookmarkProvider, clipboard,
+    clipboard::ClipboardProvider, llm::LlmProvider, project::ProjectProvider,
     snippet::SnippetProvider, websearch::WebSearchProvider, window::WindowProvider,
 };
 
@@ -28,6 +29,26 @@ const TAILWIND_CSS: Asset = asset!("/assets/tailwind.css");
 enum View {
     Search,
     Settings,
+    LlmAnswer,
+}
+
+/// AI への質問の状態
+#[derive(Clone, PartialEq)]
+enum LlmAnswerState {
+    Idle,
+    /// 生成中(partial はここまでに届いた分の回答)
+    Loading {
+        question: String,
+        partial: String,
+    },
+    Done {
+        question: String,
+        answer: String,
+    },
+    Error {
+        question: String,
+        message: String,
+    },
 }
 
 #[component]
@@ -36,11 +57,29 @@ pub fn App() -> Element {
     let mut query = use_signal(String::new);
     let mut selected = use_signal(|| 0usize);
     let mut view = use_signal(|| View::Search);
+    let mut llm_answer = use_signal(|| LlmAnswerState::Idle);
     let cfg = use_signal(config::load);
 
-    // プロバイダ一覧(この順に候補が並ぶ)
+    // クリップボード履歴(ウィンドウが隠れている間もバックグラウンドで蓄積する)
+    let clipboard_history = use_hook(clipboard::new_history);
+    use_hook({
+        let clipboard_history = clipboard_history.clone();
+        move || {
+            spawn(async move {
+                let mut last_seen = None;
+                loop {
+                    clipboard::poll(&clipboard_history, &mut last_seen);
+                    tokio::time::sleep(clipboard::POLL_INTERVAL).await;
+                }
+            });
+        }
+    });
+
+    // プロバイダ一覧(この順に候補が並ぶ。AIへの質問は常に先頭に出す)
     let mut providers = use_signal(|| {
         let list: Vec<Box<dyn Provider>> = vec![
+            Box::new(LlmProvider),
+            Box::new(ClipboardProvider::new(clipboard_history.clone())),
             Box::new(WindowProvider::new()),
             Box::new(ProjectProvider::new()),
             Box::new(BookmarkProvider::new()),
@@ -55,7 +94,41 @@ pub fn App() -> Element {
     let current = cfg.read().clone();
     let opacity = current.window.opacity;
     let hotkey = current.general.hotkey.clone();
+    let llm_host = current.llm.host.clone();
+    let llm_model = current.llm.model.clone();
+
+    // AI への質問を実行するコールバック。App のスコープに所有されるので、
+    // 呼び出し後に SearchView -> LlmAnswerView へ画面が切り替わって
+    // SearchView がアンマウントされても、spawn したタスクは破棄されずに続行する
+    // (spawn は「呼び出したスコープ」ではなく「コールバックの生成元スコープ」に紐づく)
+    let ask_llm = use_callback(move |prompt: String| {
+        let host = llm_host.clone();
+        let model = llm_model.clone();
+        let question = prompt.clone();
+        llm_answer.set(LlmAnswerState::Loading {
+            question: question.clone(),
+            partial: String::new(),
+        });
+        view.set(View::LlmAnswer);
+        spawn(async move {
+            let question_for_chunks = question.clone();
+            let result = crate::providers::llm::ask(&host, &model, &prompt, move |partial| {
+                llm_answer.set(LlmAnswerState::Loading {
+                    question: question_for_chunks.clone(),
+                    partial: partial.to_string(),
+                });
+            })
+            .await;
+            llm_answer.set(match result {
+                Ok(answer) => LlmAnswerState::Done { question, answer },
+                Err(message) => LlmAnswerState::Error { question, message },
+            });
+        });
+    });
+
     let enabled = [
+        current.providers.llm,
+        current.providers.clipboard,
         current.providers.window,
         current.providers.project,
         current.providers.bookmark,
@@ -116,6 +189,7 @@ pub fn App() -> Element {
                     query.set(String::new());
                     selected.set(0);
                     view.set(View::Search);
+                    llm_answer.set(LlmAnswerState::Idle);
                     window.set_visible(true);
                     window.set_focus();
                 }
@@ -156,7 +230,7 @@ pub fn App() -> Element {
                 ..
             } = event
             {
-                if !focused {
+                if !focused && !matches!(llm_answer(), LlmAnswerState::Loading { .. }) {
                     let window = window.clone();
                     spawn(async move {
                         tokio::time::sleep(std::time::Duration::from_millis(150)).await;
@@ -182,7 +256,11 @@ pub fn App() -> Element {
                     });"#,
                 );
                 while eval.recv::<String>().await.is_ok() {
-                    if view() == View::Settings {
+                    if view() == View::LlmAnswer
+                        && matches!(llm_answer(), LlmAnswerState::Loading { .. })
+                    {
+                        // 回答待ちの間は Esc で消えないようにする
+                    } else if view() == View::Settings || view() == View::LlmAnswer {
                         view.set(View::Search);
                     } else {
                         window.set_visible(false);
@@ -205,6 +283,7 @@ pub fn App() -> Element {
                 query.set(String::new());
                 selected.set(0);
                 view.set(View::Search);
+                llm_answer.set(LlmAnswerState::Idle);
                 window.set_visible(true);
                 window.set_focus();
             }
@@ -242,10 +321,14 @@ pub fn App() -> Element {
                         selected,
                         view,
                         candidates: candidates.clone(),
+                        ask_llm,
                     }
                 },
                 View::Settings => rsx! {
                     SettingsView { cfg, view }
+                },
+                View::LlmAnswer => rsx! {
+                    LlmAnswerView { llm_answer, view }
                 },
             }
         }
@@ -259,6 +342,7 @@ fn SearchView(
     selected: Signal<usize>,
     view: Signal<View>,
     candidates: Vec<Candidate>,
+    ask_llm: Callback<String>,
 ) -> Element {
     let window = use_window();
     let mut query = query;
@@ -308,10 +392,16 @@ fn SearchView(
                         }
                         Key::Enter => {
                             if let Some(c) = candidates.get(selected()) {
-                                c.action.run();
-                                query.set(String::new());
-                                selected.set(0);
-                                window.set_visible(false);
+                                if let Action::AskLlm(prompt) = c.action.clone() {
+                                    ask_llm.call(prompt);
+                                    query.set(String::new());
+                                    selected.set(0);
+                                } else {
+                                    c.action.run();
+                                    query.set(String::new());
+                                    selected.set(0);
+                                    window.set_visible(false);
+                                }
                             }
                         }
                         _ => {}
@@ -349,6 +439,51 @@ fn SearchView(
     }
 }
 
+/// AIの回答画面
+#[component]
+fn LlmAnswerView(llm_answer: Signal<LlmAnswerState>, view: Signal<View>) -> Element {
+    let mut view = view;
+    let state = llm_answer.read().clone();
+    let question = match &state {
+        LlmAnswerState::Idle => "",
+        LlmAnswerState::Loading { question, .. } => question,
+        LlmAnswerState::Done { question, .. } => question,
+        LlmAnswerState::Error { question, .. } => question,
+    };
+
+    rsx! {
+        div {
+            class: "flex items-center justify-between px-6 py-5",
+            h2 { class: "text-lg text-neutral-300 truncate", "「{question}」" }
+            button {
+                class: "px-3 py-1 text-sm text-neutral-400 hover:text-neutral-100",
+                onclick: move |_| view.set(View::Search),
+                "戻る (Esc)"
+            }
+        }
+
+        div {
+            class: "flex-1 overflow-y-auto px-6 py-4 whitespace-pre-wrap",
+            match &state {
+                LlmAnswerState::Idle => rsx! {},
+                LlmAnswerState::Loading { partial, .. } => rsx! {
+                    if partial.is_empty() {
+                        div { class: "text-neutral-500", "考え中…" }
+                    } else {
+                        div { "{partial}" }
+                    }
+                },
+                LlmAnswerState::Done { answer, .. } => rsx! {
+                    div { "{answer}" }
+                },
+                LlmAnswerState::Error { message, .. } => rsx! {
+                    div { class: "text-red-400", "{message}" }
+                },
+            }
+        }
+    }
+}
+
 /// 設定画面
 #[component]
 fn SettingsView(cfg: Signal<config::Config>, view: Signal<View>) -> Element {
@@ -364,6 +499,8 @@ fn SettingsView(cfg: Signal<config::Config>, view: Signal<View>) -> Element {
     let opacity = current.window.opacity;
     let opacity_pct = ((opacity - 0.3) / (1.0 - 0.3) * 100.0).clamp(0.0, 100.0);
     let p = current.providers.clone();
+    let llm_host = current.llm.host.clone();
+    let llm_model = current.llm.model.clone();
     let current_message = message.read().clone();
 
     rsx! {
@@ -457,6 +594,11 @@ fn SettingsView(cfg: Signal<config::Config>, view: Signal<View>) -> Element {
                 div {
                     class: "space-y-2",
                     ProviderToggle {
+                        label: "クリップボード履歴",
+                        checked: p.clipboard,
+                        on_toggle: move |v| cfg.write().providers.clipboard = v,
+                    }
+                    ProviderToggle {
                         label: "ウィンドウ切り替え",
                         checked: p.window,
                         on_toggle: move |v| cfg.write().providers.window = v,
@@ -485,6 +627,31 @@ fn SettingsView(cfg: Signal<config::Config>, view: Signal<View>) -> Element {
                         label: "Web検索",
                         checked: p.websearch,
                         on_toggle: move |v| cfg.write().providers.websearch = v,
+                    }
+                    ProviderToggle {
+                        label: "AIに聞く",
+                        checked: p.llm,
+                        on_toggle: move |v| cfg.write().providers.llm = v,
+                    }
+                }
+            }
+
+            // AI (Ollama)
+            div {
+                label { class: "block text-sm text-neutral-400 mb-2", "AI (Ollama)" }
+                div {
+                    class: "space-y-2",
+                    input {
+                        class: "w-full px-3 py-2 bg-neutral-800 rounded outline-none border border-neutral-700 focus:border-neutral-500",
+                        placeholder: "ホスト (例: http://localhost:11434)",
+                        value: "{llm_host}",
+                        oninput: move |e| cfg.write().llm.host = e.value(),
+                    }
+                    input {
+                        class: "w-full px-3 py-2 bg-neutral-800 rounded outline-none border border-neutral-700 focus:border-neutral-500",
+                        placeholder: "モデル名 (例: llama3.2)",
+                        value: "{llm_model}",
+                        oninput: move |e| cfg.write().llm.model = e.value(),
                     }
                 }
             }

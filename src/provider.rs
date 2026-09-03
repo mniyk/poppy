@@ -9,6 +9,9 @@ pub enum Action {
     OpenInVscode(String),
     /// 文字列をクリップボードにコピーする
     CopyToClipboard(String),
+    /// AIに質問する(非同期処理が必要なため、UI側でEnter入力時に
+    /// 特別扱いして実行する。run() からは呼ばれない)
+    AskLlm(String),
 }
 
 impl Action {
@@ -33,6 +36,7 @@ impl Action {
                     Err(err) => eprintln!("クリップボードにコピーできませんでした: {err}"),
                 }
             }
+            Action::AskLlm(_) => {}
         }
     }
 }
