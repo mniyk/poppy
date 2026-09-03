@@ -325,7 +325,11 @@ pub fn App() -> Element {
                     }
                 },
                 View::Settings => rsx! {
-                    SettingsView { cfg, view }
+                    SettingsView {
+                        cfg,
+                        view,
+                        clipboard_history: clipboard_history.clone(),
+                    }
                 },
                 View::LlmAnswer => rsx! {
                     LlmAnswerView { llm_answer, view }
@@ -486,10 +490,15 @@ fn LlmAnswerView(llm_answer: Signal<LlmAnswerState>, view: Signal<View>) -> Elem
 
 /// 設定画面
 #[component]
-fn SettingsView(cfg: Signal<config::Config>, view: Signal<View>) -> Element {
+fn SettingsView(
+    cfg: Signal<config::Config>,
+    view: Signal<View>,
+    clipboard_history: clipboard::ClipboardHistory,
+) -> Element {
     let mut cfg = cfg;
     let mut view = view;
     let mut message = use_signal(String::new);
+    let clipboard_count = clipboard_history.borrow().len();
 
     // 描画に使う値を先に取り出す(read のガードを rsx! に持ち込まない)
     let current = cfg.read().clone();
@@ -593,10 +602,22 @@ fn SettingsView(cfg: Signal<config::Config>, view: Signal<View>) -> Element {
                 label { class: "block text-sm text-neutral-400 mb-2", "有効にする機能" }
                 div {
                     class: "space-y-2",
-                    ProviderToggle {
-                        label: "クリップボード履歴",
-                        checked: p.clipboard,
-                        on_toggle: move |v| cfg.write().providers.clipboard = v,
+                    div {
+                        class: "flex items-center justify-between",
+                        ProviderToggle {
+                            label: "クリップボード履歴",
+                            checked: p.clipboard,
+                            on_toggle: move |v| cfg.write().providers.clipboard = v,
+                        }
+                        button {
+                            class: "px-2 py-1 text-xs text-neutral-400 hover:text-neutral-100 disabled:opacity-40 disabled:hover:text-neutral-400",
+                            disabled: clipboard_count == 0,
+                            onclick: move |_| {
+                                clipboard_history.borrow_mut().clear();
+                                message.set("クリップボード履歴を削除しました".to_string());
+                            },
+                            "履歴を削除 ({clipboard_count}件)"
+                        }
                     }
                     ProviderToggle {
                         label: "ウィンドウ切り替え",
