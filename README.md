@@ -11,6 +11,7 @@ A keyboard-driven launcher for Windows. Press a hotkey and it pops up: launch ap
 - **Bookmarks** — open URLs you've registered in a config file
 - **Snippets** — copy registered text (signatures, commands, etc.) to the clipboard
 - **Projects** — open a project folder in VS Code
+- **Commands** — run registered shell commands, with an optional confirmation dialog for destructive ones
 - **Web search** — search with Google or DuckDuckGo
 - **Ask AI** — send your query to a local [Ollama](https://ollama.com/) model and read the answer inline
 - **Runs in the tray** — stays resident after you close it, so the next call is instant
@@ -74,6 +75,18 @@ Edits take effect the next time you summon Poppy.
 
 Opening a project requires the `code` command to be on your PATH
 (enable it when installing VS Code).
+
+### commands.toml
+
+    [[command]]
+    name = "ごみ箱を空にする"
+    command = "powershell -Command Clear-RecycleBin -Force"
+    confirm = true
+    keywords = ["trash", "recycle"]
+
+`command` is run via `cmd /C` in the background (no console window, output isn't captured).
+Set `confirm = true` for anything destructive — Poppy will show a native Yes/No dialog
+before running it. Defaults to `false`.
 
 ### Ask AI
 

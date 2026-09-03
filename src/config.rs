@@ -40,6 +40,7 @@ pub struct Providers {
     pub websearch: bool,
     pub llm: bool,
     pub clipboard: bool,
+    pub command: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -91,6 +92,7 @@ impl Default for Providers {
             websearch: true,
             llm: true,
             clipboard: true,
+            command: true,
         }
     }
 }
