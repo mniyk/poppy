@@ -34,6 +34,7 @@ pub struct Providers {
     pub window: bool,
     pub project: bool,
     pub bookmark: bool,
+    pub snippet: bool,
     pub app: bool,
     pub websearch: bool,
 }
@@ -72,6 +73,7 @@ impl Default for Providers {
             window: true,
             project: true,
             bookmark: true,
+            snippet: true,
             app: true,
             websearch: true,
         }

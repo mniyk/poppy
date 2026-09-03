@@ -8,6 +8,7 @@ A keyboard-driven launcher for Windows. Press a hotkey and it pops up: launch ap
 - **Window switcher** — jump to any open window by name
 - **App launcher** — search and start anything in your Start Menu
 - **Bookmarks** — open URLs you've registered in a config file
+- **Snippets** — copy registered text (signatures, commands, etc.) to the clipboard
 - **Projects** — open a project folder in VS Code
 - **Web search** — search with Google or DuckDuckGo
 - **Runs in the tray** — stays resident after you close it, so the next call is instant
@@ -31,7 +32,7 @@ Config files live here:
     %APPDATA%\poppy\config\
 
 Starter files are created on first launch. You can also open them from Poppy itself —
-type `open` and run **Open Bookmarks** or **Open Projects**.
+type `open` and run **Open Bookmarks**, **Open Snippets**, or **Open Projects**.
 
 Edits take effect the next time you summon Poppy.
 
@@ -41,6 +42,13 @@ Edits take effect the next time you summon Poppy.
     name = "GitHub"
     url = "https://github.com"
     keywords = ["gh"]
+
+### snippets.toml
+
+    [[snippet]]
+    name = "メール署名"
+    content = "Yohei Kono"
+    keywords = ["sig", "signature"]
 
 ### projects.toml
 
