@@ -35,7 +35,7 @@ Config files live here:
     %APPDATA%\poppy\config\
 
 Starter files are created on first launch. You can also open them from Poppy itself —
-type `open` and run **Open Bookmarks**, **Open Snippets**, or **Open Projects**.
+open **Settings** (`Ctrl+,`) and click the config file you want under "設定ファイル".
 
 Edits take effect the next time you summon Poppy.
 

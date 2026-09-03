@@ -27,37 +27,18 @@ impl Provider for ProjectProvider {
 
     fn candidates(&self, query: &str) -> Vec<Candidate> {
         let q = query.trim();
-        let mut list = Vec::new();
-
-        // 設定ファイルを開くコマンド(空欄時は常に、入力時は名前が部分一致したら)
-        let show_config = if q.is_empty() {
-            true
-        } else {
-            let ql = q.to_lowercase();
-            "open projects".contains(&ql)
-        };
-
-        if show_config {
-            if let Some(path) = projects::config_path() {
-                list.push(Candidate {
-                    label: "Open Projects (設定ファイルを開く)".to_string(),
-                    source: "Project",
-                    action: Action::Open(path.to_string_lossy().into_owned()),
-                });
-            }
+        if q.is_empty() {
+            return Vec::new();
         }
 
-        if !q.is_empty() {
-            for p in projects::search(&self.projects, q) {
-                list.push(Candidate {
-                    label: format!("{} を VSCode で開く", p.name),
-                    source: "Project",
-                    action: Action::OpenInVscode(p.path.clone()),
-                });
-            }
-        }
-
-        list
+        projects::search(&self.projects, q)
+            .into_iter()
+            .map(|p| Candidate {
+                label: format!("{} を VSCode で開く", p.name),
+                source: "Project",
+                action: Action::OpenInVscode(p.path.clone()),
+            })
+            .collect()
     }
 }
 

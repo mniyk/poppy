@@ -12,7 +12,6 @@ use dioxus::desktop::{
 use dioxus::document;
 use dioxus::prelude::*;
 
-use crate::config;
 use crate::provider::{Action, Candidate, Provider};
 use crate::providers::{
     app_launcher::AppLauncherProvider, bookmark::BookmarkProvider, clipboard,
@@ -20,6 +19,7 @@ use crate::providers::{
     project::ProjectProvider, snippet::SnippetProvider, websearch::WebSearchProvider,
     window::WindowProvider,
 };
+use crate::{bookmarks, commands, config, projects, snippets};
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
@@ -684,6 +684,30 @@ fn SettingsView(
                     }
                 }
             }
+
+            // 設定ファイル
+            div {
+                label { class: "block text-sm text-neutral-400 mb-2", "設定ファイル" }
+                div {
+                    class: "flex flex-wrap gap-2",
+                    ConfigFileButton {
+                        label: "Bookmarks",
+                        path: bookmarks::config_path().map(|p| p.to_string_lossy().into_owned()),
+                    }
+                    ConfigFileButton {
+                        label: "Snippets",
+                        path: snippets::config_path().map(|p| p.to_string_lossy().into_owned()),
+                    }
+                    ConfigFileButton {
+                        label: "Projects",
+                        path: projects::config_path().map(|p| p.to_string_lossy().into_owned()),
+                    }
+                    ConfigFileButton {
+                        label: "Commands",
+                        path: commands::config_path().map(|p| p.to_string_lossy().into_owned()),
+                    }
+                }
+            }
         }
 
         // フッター
@@ -727,6 +751,23 @@ fn ProviderToggle(label: String, checked: bool, on_toggle: EventHandler<bool>) -
                 }
             }
             span { class: "text-sm", "{label}" }
+        }
+    }
+}
+
+/// 設定ファイルを開くボタン1個分
+#[component]
+fn ConfigFileButton(label: String, path: Option<String>) -> Element {
+    rsx! {
+        button {
+            class: "px-3 py-1.5 text-sm bg-neutral-800 hover:bg-neutral-700 rounded disabled:opacity-40 disabled:hover:bg-neutral-800",
+            disabled: path.is_none(),
+            onclick: move |_| {
+                if let Some(path) = &path {
+                    Action::Open(path.clone()).run();
+                }
+            },
+            "{label}"
         }
     }
 }
