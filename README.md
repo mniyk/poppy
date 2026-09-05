@@ -109,6 +109,11 @@ Requires Ollama running locally (or reachable over the network) with a model alr
 pulled (`ollama pull gemma3:4b`, for example). Set the host and model name in
 **Settings** (`Ctrl+,`).
 
+Local models happily make things up when asked about facts they don't actually know.
+Set a [Tavily](https://tavily.com/) API key in Settings and Poppy will search the web
+first and ground the answer in those results (with sources listed at the end) instead of
+guessing. Leave it blank to skip web search and ask the model directly.
+
 ## Installation
 
 Download the installer from [Releases](https://github.com/mniyk/poppy/releases) and run it.

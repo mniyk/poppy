@@ -53,6 +53,8 @@ pub struct Llm {
     pub host: String,
     /// 使用するモデル名
     pub model: String,
+    /// Tavily の API キー(空欄ならWeb検索なしでそのままLLMに質問する)
+    pub tavily_api_key: String,
 }
 
 impl Default for Config {
@@ -107,6 +109,7 @@ impl Default for Llm {
         Self {
             host: "http://localhost:11434".to_string(),
             model: "gemma3:4b".to_string(),
+            tavily_api_key: String::new(),
         }
     }
 }

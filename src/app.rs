@@ -135,6 +135,7 @@ pub fn App() -> Element {
     let hotkey = current.general.hotkey.clone();
     let llm_host = current.llm.host.clone();
     let llm_model = current.llm.model.clone();
+    let tavily_api_key = current.llm.tavily_api_key.clone();
 
     // AI への質問を実行するコールバック。App のスコープに所有されるので、
     // 呼び出し後に SearchView -> LlmAnswerView へ画面が切り替わって
@@ -143,6 +144,7 @@ pub fn App() -> Element {
     let ask_llm = use_callback(move |prompt: String| {
         let host = llm_host.clone();
         let model = llm_model.clone();
+        let tavily_api_key = tavily_api_key.clone();
         let question = prompt.clone();
         llm_answer.set(LlmAnswerState::Loading {
             question: question.clone(),
@@ -151,12 +153,18 @@ pub fn App() -> Element {
         view.set(View::LlmAnswer);
         spawn(async move {
             let question_for_chunks = question.clone();
-            let result = crate::providers::llm::ask(&host, &model, &prompt, move |partial| {
-                llm_answer.set(LlmAnswerState::Loading {
-                    question: question_for_chunks.clone(),
-                    partial: partial.to_string(),
-                });
-            })
+            let result = crate::providers::llm::ask(
+                &host,
+                &model,
+                &tavily_api_key,
+                &prompt,
+                move |partial| {
+                    llm_answer.set(LlmAnswerState::Loading {
+                        question: question_for_chunks.clone(),
+                        partial: partial.to_string(),
+                    });
+                },
+            )
             .await;
             llm_answer.set(match result {
                 Ok(answer) => LlmAnswerState::Done { question, answer },
@@ -623,6 +631,7 @@ fn SettingsView(
     let p = current.providers.clone();
     let llm_host = current.llm.host.clone();
     let llm_model = current.llm.model.clone();
+    let tavily_api_key = current.llm.tavily_api_key.clone();
     let current_message = message.read().clone();
 
     rsx! {
@@ -819,6 +828,13 @@ fn SettingsView(
                         placeholder: "モデル名 (例: llama3.2)",
                         value: "{llm_model}",
                         oninput: move |e| cfg.write().llm.model = e.value(),
+                    }
+                    input {
+                        r#type: "password",
+                        class: "w-full px-3 py-2 bg-neutral-800 rounded outline-none border border-neutral-700 focus:border-neutral-500",
+                        placeholder: "Tavily APIキー (空欄ならWeb検索なしで質問)",
+                        value: "{tavily_api_key}",
+                        oninput: move |e| cfg.write().llm.tavily_api_key = e.value(),
                     }
                 }
             }
