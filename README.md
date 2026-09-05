@@ -8,7 +8,7 @@ A keyboard-driven launcher for Windows. Press a hotkey and it pops up: launch ap
 - **Window switcher** — jump to any open window by name
 - **Clipboard history** — search and re-copy anything you've copied recently (last 30 items)
 - **Todos** — type anything to add it as a todo; browse and check off existing ones on empty query
-- **App launcher** — search and start anything in your Start Menu
+- **App launcher** — search and start anything in your Start Menu, including Microsoft Store (MSIX) apps
 - **Bookmarks** — open URLs you've registered in a config file
 - **Snippets** — copy registered text (signatures, commands, etc.) to the clipboard
 - **Projects** — open a project folder in VS Code

@@ -1,10 +1,10 @@
 use windows::Win32::Foundation::{BOOL, HWND, LPARAM, TRUE};
+use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetWindow, GetWindowLongPtrW, GetWindowTextLengthW, GetWindowTextW, IsIconic,
     IsWindowVisible, SetForegroundWindow, ShowWindow, GWL_EXSTYLE, GW_OWNER, SW_RESTORE,
     WS_EX_TOOLWINDOW,
 };
-use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
 
 use crate::provider::{Action, Candidate, Provider};
 

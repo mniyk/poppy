@@ -1,25 +1,40 @@
+use std::cell::RefCell;
 use std::path::PathBuf;
+use std::rc::Rc;
 
+use serde::Deserialize;
 use walkdir::WalkDir;
 
 use crate::provider::{Action, Candidate, Provider};
 
 /// インストール済みアプリ1件
 #[derive(Debug, Clone)]
-struct AppEntry {
-    /// 表示名(ショートカットのファイル名から拡張子を除いたもの)
+pub struct AppEntry {
+    /// 候補に表示する名前
     name: String,
-    /// .lnk のパス
-    path: PathBuf,
+    /// open::that() に渡す起動先(.lnk のパス、または shell:appsFolder\<AppID>)
+    target: String,
+}
+
+/// MSIX(Microsoft Store)アプリの一覧。取得に時間がかかるため、
+/// 起動時に一度だけバックグラウンドで取得してここにキャッシュする
+pub type SharedStoreApps = Rc<RefCell<Vec<AppEntry>>>;
+
+pub fn new_shared_store_apps() -> SharedStoreApps {
+    Rc::new(RefCell::new(Vec::new()))
 }
 
 pub struct AppLauncherProvider {
     apps: Vec<AppEntry>,
+    store_apps: SharedStoreApps,
 }
 
 impl AppLauncherProvider {
-    pub fn new() -> Self {
-        Self { apps: scan_apps() }
+    pub fn new(store_apps: SharedStoreApps) -> Self {
+        Self {
+            apps: scan_apps(),
+            store_apps,
+        }
     }
 }
 
@@ -29,6 +44,7 @@ impl Provider for AppLauncherProvider {
     }
 
     fn reload(&mut self) {
+        // .lnk のスキャンは高速なので毎回やり直す(MSIXアプリの一覧は再取得しない)
         self.apps = scan_apps();
     }
 
@@ -40,11 +56,12 @@ impl Provider for AppLauncherProvider {
 
         self.apps
             .iter()
+            .chain(self.store_apps.borrow().iter())
             .filter(|a| a.name.to_lowercase().contains(&q))
             .map(|a| Candidate {
                 label: format!("{} を起動", a.name),
                 source: "App",
-                action: Action::Open(a.path.to_string_lossy().into_owned()),
+                action: Action::Open(a.target.clone()),
             })
             .collect()
     }
@@ -101,7 +118,7 @@ fn scan_apps() -> Vec<AppEntry> {
             };
             apps.push(AppEntry {
                 name: name.to_string(),
-                path: path.to_path_buf(),
+                target: path.to_string_lossy().into_owned(),
             });
         }
     }
@@ -111,4 +128,55 @@ fn scan_apps() -> Vec<AppEntry> {
     apps.dedup_by(|a, b| a.name.eq_ignore_ascii_case(&b.name));
 
     apps
+}
+
+#[derive(Deserialize)]
+struct StartApp {
+    #[serde(rename = "Name")]
+    name: String,
+    #[serde(rename = "AppID")]
+    app_id: String,
+}
+
+/// Get-StartApps で MSIX(Microsoft Store)アプリを取得する
+///
+/// PowerShell の起動に数百ms かかることがあるため、これは起動時に一度だけ
+/// バックグラウンドで呼び出す想定(ホットキーの reload() では呼ばない)
+pub fn fetch_store_apps() -> Vec<AppEntry> {
+    use std::os::windows::process::CommandExt;
+
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+    // PowerShell の標準出力は既定でシステムのANSIコードページ(日本語環境では
+    // CP932)になり、UTF-8 として読むと失敗するため、明示的にUTF-8へ切り替える
+    let result = std::process::Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; \
+             @(Get-StartApps) | ConvertTo-Json -Compress",
+        ])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output();
+
+    let Ok(output) = result else {
+        return Vec::new();
+    };
+    let Ok(text) = String::from_utf8(output.stdout) else {
+        return Vec::new();
+    };
+    let Ok(apps) = serde_json::from_str::<Vec<StartApp>>(&text) else {
+        return Vec::new();
+    };
+
+    // AppID に "!" を含むものだけが MSIX アプリ。従来型アプリ(.lnk)は
+    // scan_apps() 側で既にカバーしているので、ここでは除外して重複を避ける
+    apps.into_iter()
+        .filter(|a| a.app_id.contains('!'))
+        .map(|a| AppEntry {
+            name: a.name,
+            target: format!("shell:appsFolder\\{}", a.app_id),
+        })
+        .collect()
 }
