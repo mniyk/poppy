@@ -6,6 +6,7 @@ mod projects;
 mod provider;
 mod providers;
 mod snippets;
+mod todos;
 
 use app::App;
 use dioxus::desktop::tao::platform::windows::WindowBuilderExtWindows;

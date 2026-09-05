@@ -7,6 +7,7 @@ A keyboard-driven launcher for Windows. Press a hotkey and it pops up: launch ap
 - **Global hotkey** — summon it from anywhere with `Ctrl+Alt+R`
 - **Window switcher** — jump to any open window by name
 - **Clipboard history** — search and re-copy anything you've copied recently (last 30 items)
+- **Todos** — type anything to add it as a todo; browse and check off existing ones on empty query
 - **App launcher** — search and start anything in your Start Menu
 - **Bookmarks** — open URLs you've registered in a config file
 - **Snippets** — copy registered text (signatures, commands, etc.) to the clipboard
@@ -23,6 +24,8 @@ A keyboard-driven launcher for Windows. Press a hotkey and it pops up: launch ap
 | Show / hide | `Ctrl+Alt+R` |
 | Move through results | `↑` `↓` |
 | Run | `Enter` |
+| Open Settings | `Ctrl+,` |
+| Clear clipboard history | `Ctrl+Shift+K` |
 | Close | `Esc` |
 
 Clicking outside the window also closes it.
@@ -87,6 +90,15 @@ Opening a project requires the `code` command to be on your PATH
 `command` is run via `cmd /C` in the background (no console window, output isn't captured).
 Set `confirm = true` for anything destructive — Poppy will show a native Yes/No dialog
 before running it. Defaults to `false`.
+
+### Todos
+
+Type anything and the top result offers to add it as a todo. On an empty query, existing
+todos show up as "TODO の「〜」を完了にする" — press `Enter` on one to mark it done (it's
+removed from the list).
+
+Unlike the other config files, `todos.toml` is managed by Poppy itself as you add and
+complete todos — you don't need to edit it by hand.
 
 ### Ask AI
 

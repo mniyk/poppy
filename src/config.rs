@@ -43,6 +43,7 @@ pub struct Providers {
     pub llm: bool,
     pub clipboard: bool,
     pub command: bool,
+    pub todo: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -96,6 +97,7 @@ impl Default for Providers {
             llm: true,
             clipboard: true,
             command: true,
+            todo: true,
         }
     }
 }

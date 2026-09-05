@@ -16,10 +16,10 @@ use crate::provider::{Action, Candidate, Provider};
 use crate::providers::{
     app_launcher::AppLauncherProvider, bookmark::BookmarkProvider, clipboard,
     clipboard::ClipboardProvider, command::CommandProvider, llm::LlmProvider,
-    project::ProjectProvider, snippet::SnippetProvider, websearch::WebSearchProvider,
-    window::WindowProvider,
+    project::ProjectProvider, snippet::SnippetProvider, todo::TodoProvider,
+    websearch::WebSearchProvider, window::WindowProvider,
 };
-use crate::{bookmarks, commands, config, projects, snippets};
+use crate::{bookmarks, commands, config, projects, snippets, todos};
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
@@ -72,25 +72,34 @@ pub fn App() -> Element {
     let mut llm_answer = use_signal(|| LlmAnswerState::Idle);
     let cfg = use_signal(config::load);
 
-    // クリップボード履歴(ウィンドウが隠れている間もバックグラウンドで蓄積する)
+    // クリップボード履歴(ウィンドウが隠れている間もバックグラウンドで蓄積する)。
+    // 履歴自体は Signal ではない共有データ(Rc<RefCell<..>>)なので、中身が変わった
+    // ことを App に伝えて候補一覧の再計算をトリガーするために clipboard_tick を使う
     let clipboard_history = use_hook(clipboard::new_history);
+    let mut clipboard_tick = use_signal(|| 0u32);
     use_hook({
         let clipboard_history = clipboard_history.clone();
         move || {
             spawn(async move {
                 let mut last_seen = None;
                 loop {
-                    clipboard::poll(&clipboard_history, &mut last_seen);
+                    if clipboard::poll(&clipboard_history, &mut last_seen) {
+                        clipboard_tick += 1;
+                    }
                     tokio::time::sleep(clipboard::POLL_INTERVAL).await;
                 }
             });
         }
     });
 
+    // TODO(追加・完了のたびに書き換える共有状態)
+    let todos_state = use_hook(todos::new_shared);
+
     // プロバイダ一覧(この順に候補が並ぶ。AIへの質問は常に先頭に出す)
     let mut providers = use_signal(|| {
         let list: Vec<Box<dyn Provider>> = vec![
             Box::new(LlmProvider),
+            Box::new(TodoProvider::new(todos_state.clone())),
             Box::new(ClipboardProvider::new(clipboard_history.clone())),
             Box::new(WindowProvider::new()),
             Box::new(ProjectProvider::new()),
@@ -142,6 +151,7 @@ pub fn App() -> Element {
 
     let enabled = [
         current.providers.llm,
+        current.providers.todo,
         current.providers.clipboard,
         current.providers.window,
         current.providers.project,
@@ -154,6 +164,7 @@ pub fn App() -> Element {
 
     // 入力に応じた候補一覧(有効なプロバイダのみ)
     let candidates: Vec<Candidate> = {
+        let _ = clipboard_tick();
         let q = query.read().clone();
         providers
             .read()
@@ -338,6 +349,9 @@ pub fn App() -> Element {
                         candidates: candidates.clone(),
                         ask_llm,
                         accent_color: accent_color.clone(),
+                        todos_state: todos_state.clone(),
+                        clipboard_history: clipboard_history.clone(),
+                        clipboard_tick,
                     }
                 },
                 View::Settings => rsx! {
@@ -345,6 +359,7 @@ pub fn App() -> Element {
                         cfg,
                         view,
                         clipboard_history: clipboard_history.clone(),
+                        clipboard_tick,
                     }
                 },
                 View::LlmAnswer => rsx! {
@@ -364,14 +379,19 @@ fn SearchView(
     candidates: Vec<Candidate>,
     ask_llm: Callback<String>,
     accent_color: String,
+    todos_state: todos::SharedTodos,
+    clipboard_history: clipboard::ClipboardHistory,
+    mut clipboard_tick: Signal<u32>,
 ) -> Element {
     let window = use_window();
     let mut query = query;
     let mut selected = selected;
     let mut view = view;
+    let mut status = use_signal(String::new);
 
     let current_query = query.read().clone();
     let current_selected = selected();
+    let current_status = status.read().clone();
     let (ar, ag, ab) = hex_to_rgb(&accent_color);
 
     rsx! {
@@ -399,6 +419,20 @@ fn SearchView(
                         return;
                     }
 
+                    // クリップボード履歴を削除(Shift併用時は "K" と報告されるため大文字小文字を無視)
+                    let is_k = matches!(&e.key(), Key::Character(c) if c.eq_ignore_ascii_case("k"));
+                    if is_k && e.modifiers().ctrl() && e.modifiers().shift() {
+                        e.prevent_default();
+                        clipboard_history.borrow_mut().clear();
+                        clipboard_tick += 1;
+                        status.set("クリップボード履歴を削除しました".to_string());
+                        spawn(async move {
+                            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                            status.set(String::new());
+                        });
+                        return;
+                    }
+
                     let len = candidates.len();
                     if len == 0 {
                         return;
@@ -414,15 +448,33 @@ fn SearchView(
                         }
                         Key::Enter => {
                             if let Some(c) = candidates.get(selected()) {
-                                if let Action::AskLlm(prompt) = c.action.clone() {
-                                    ask_llm.call(prompt);
-                                    query.set(String::new());
-                                    selected.set(0);
-                                } else {
-                                    c.action.run();
-                                    query.set(String::new());
-                                    selected.set(0);
-                                    window.set_visible(false);
+                                match c.action.clone() {
+                                    Action::AskLlm(prompt) => {
+                                        ask_llm.call(prompt);
+                                        query.set(String::new());
+                                        selected.set(0);
+                                    }
+                                    Action::AddTodo(text) => {
+                                        let id = todos::next_id(&todos_state.borrow());
+                                        todos_state
+                                            .borrow_mut()
+                                            .insert(0, todos::Todo { id, text });
+                                        let _ = todos::save(&todos_state.borrow());
+                                        query.set(String::new());
+                                        selected.set(0);
+                                    }
+                                    Action::CompleteTodo(id) => {
+                                        todos_state.borrow_mut().retain(|t| t.id != id);
+                                        let _ = todos::save(&todos_state.borrow());
+                                        query.set(String::new());
+                                        selected.set(0);
+                                    }
+                                    _ => {
+                                        c.action.run();
+                                        query.set(String::new());
+                                        selected.set(0);
+                                        window.set_visible(false);
+                                    }
                                 }
                             }
                         }
@@ -462,7 +514,11 @@ fn SearchView(
         // フッター
         div {
             class: "px-6 py-2 text-xs text-neutral-600 text-right",
-            "Ctrl+, で設定"
+            if current_status.is_empty() {
+                "Ctrl+, で設定  /  Ctrl+Shift+K でクリップボード履歴を削除"
+            } else {
+                "{current_status}"
+            }
         }
     }
 }
@@ -533,6 +589,7 @@ fn SettingsView(
     cfg: Signal<config::Config>,
     view: Signal<View>,
     clipboard_history: clipboard::ClipboardHistory,
+    mut clipboard_tick: Signal<u32>,
 ) -> Element {
     let mut cfg = cfg;
     let mut view = view;
@@ -667,6 +724,7 @@ fn SettingsView(
                             disabled: clipboard_count == 0,
                             onclick: move |_| {
                                 clipboard_history.borrow_mut().clear();
+                                clipboard_tick += 1;
                                 message.set("クリップボード履歴を削除しました".to_string());
                             },
                             "履歴を削除 ({clipboard_count}件)"
@@ -719,6 +777,12 @@ fn SettingsView(
                         checked: p.llm,
                         accent: accent_color.clone(),
                         on_toggle: move |v| cfg.write().providers.llm = v,
+                    }
+                    ProviderToggle {
+                        label: "TODO",
+                        checked: p.todo,
+                        accent: accent_color.clone(),
+                        on_toggle: move |v| cfg.write().providers.todo = v,
                     }
                 }
             }

@@ -5,5 +5,6 @@ pub mod command;
 pub mod llm;
 pub mod project;
 pub mod snippet;
+pub mod todo;
 pub mod websearch;
 pub mod window;

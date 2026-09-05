@@ -23,17 +23,20 @@ pub fn new_history() -> ClipboardHistory {
 /// `last_seen` は直前に確認した内容を保持しておくための状態で、ポーリングの
 /// たびに OS のクリップボードへ問い合わせるコストを避けるためのものではなく、
 /// 同じ内容を重複して履歴の先頭に積み直さないようにするために使う
-pub fn poll(history: &ClipboardHistory, last_seen: &mut Option<String>) {
+///
+/// 戻り値は履歴を実際に更新したかどうか。履歴は Signal ではない共有データなので、
+/// 呼び出し側はこれを見て、候補一覧の再計算をトリガーする必要がある
+pub fn poll(history: &ClipboardHistory, last_seen: &mut Option<String>) -> bool {
     let Ok(mut clipboard) = arboard::Clipboard::new() else {
-        return;
+        return false;
     };
     let Ok(text) = clipboard.get_text() else {
-        return;
+        return false;
     };
 
     let text = text.trim().to_string();
     if text.is_empty() || last_seen.as_deref() == Some(text.as_str()) {
-        return;
+        return false;
     }
     *last_seen = Some(text.clone());
 
@@ -41,6 +44,7 @@ pub fn poll(history: &ClipboardHistory, last_seen: &mut Option<String>) {
     list.retain(|existing| existing != &text);
     list.push_front(text);
     list.truncate(MAX_HISTORY);
+    true
 }
 
 /// クリップボード履歴から候補を出すプロバイダ
