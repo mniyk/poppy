@@ -14,7 +14,7 @@ use dioxus::prelude::*;
 
 use crate::provider::{Action, Candidate, Provider};
 use crate::providers::{
-    app_launcher::AppLauncherProvider, bookmark::BookmarkProvider, clipboard,
+    app_launcher, app_launcher::AppLauncherProvider, bookmark::BookmarkProvider, clipboard,
     clipboard::ClipboardProvider, command::CommandProvider, llm::LlmProvider,
     project::ProjectProvider, snippet::SnippetProvider, todo::TodoProvider,
     websearch::WebSearchProvider, window::WindowProvider,
@@ -95,19 +95,35 @@ pub fn App() -> Element {
     // TODO(追加・完了のたびに書き換える共有状態)
     let todos_state = use_hook(todos::new_shared);
 
+    // MSIX(Microsoft Store)アプリの一覧。PowerShell の起動に時間がかかるため、
+    // ホットキーのたびには取得せず、起動時に一度だけバックグラウンドで取得する
+    let store_apps = use_hook(app_launcher::new_shared_store_apps);
+    use_hook({
+        let store_apps = store_apps.clone();
+        move || {
+            spawn(async move {
+                let apps = tokio::task::spawn_blocking(app_launcher::fetch_store_apps)
+                    .await
+                    .unwrap_or_default();
+                *store_apps.borrow_mut() = apps;
+            });
+        }
+    });
+
     // プロバイダ一覧(この順に候補が並ぶ。AIへの質問は常に先頭に出す)
     let mut providers = use_signal(|| {
         let list: Vec<Box<dyn Provider>> = vec![
             Box::new(LlmProvider),
             Box::new(TodoProvider::new(todos_state.clone())),
-            Box::new(ClipboardProvider::new(clipboard_history.clone())),
             Box::new(WindowProvider::new()),
             Box::new(ProjectProvider::new()),
             Box::new(BookmarkProvider::new()),
             Box::new(SnippetProvider::new()),
             Box::new(CommandProvider::new()),
-            Box::new(AppLauncherProvider::new()),
+            Box::new(AppLauncherProvider::new(store_apps.clone())),
             Box::new(WebSearchProvider),
+            // 最大30件出うるので、他の候補が埋もれないよう最後に置く
+            Box::new(ClipboardProvider::new(clipboard_history.clone())),
         ];
         list
     });
@@ -152,7 +168,6 @@ pub fn App() -> Element {
     let enabled = [
         current.providers.llm,
         current.providers.todo,
-        current.providers.clipboard,
         current.providers.window,
         current.providers.project,
         current.providers.bookmark,
@@ -160,6 +175,7 @@ pub fn App() -> Element {
         current.providers.command,
         current.providers.app,
         current.providers.websearch,
+        current.providers.clipboard,
     ];
 
     // 入力に応じた候補一覧(有効なプロバイダのみ)
