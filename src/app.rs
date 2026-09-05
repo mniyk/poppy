@@ -25,6 +25,17 @@ const FAVICON: Asset = asset!("/assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
 const TAILWIND_CSS: Asset = asset!("/assets/tailwind.css");
 
+/// "#rrggbb" 形式の文字列を RGB に変換する(不正な形式ならワインレッドにフォールバック)
+fn hex_to_rgb(hex: &str) -> (u8, u8, u8) {
+    let hex = hex.trim_start_matches('#');
+    if hex.len() != 6 {
+        return (0x72, 0x2f, 0x37);
+    }
+
+    let channel = |range: std::ops::Range<usize>| u8::from_str_radix(&hex[range], 16).unwrap_or(0);
+    (channel(0..2), channel(2..4), channel(4..6))
+}
+
 /// 表示中の画面
 #[derive(Clone, Copy, PartialEq)]
 enum View {
@@ -95,6 +106,7 @@ pub fn App() -> Element {
     // 描画に使う設定値を先に取り出す(read のガードを rsx! に持ち込まない)
     let current = cfg.read().clone();
     let opacity = current.window.opacity;
+    let accent_color = current.window.accent_color.clone();
     let hotkey = current.general.hotkey.clone();
     let llm_host = current.llm.host.clone();
     let llm_model = current.llm.model.clone();
@@ -325,6 +337,7 @@ pub fn App() -> Element {
                         view,
                         candidates: candidates.clone(),
                         ask_llm,
+                        accent_color: accent_color.clone(),
                     }
                 },
                 View::Settings => rsx! {
@@ -350,6 +363,7 @@ fn SearchView(
     view: Signal<View>,
     candidates: Vec<Candidate>,
     ask_llm: Callback<String>,
+    accent_color: String,
 ) -> Element {
     let window = use_window();
     let mut query = query;
@@ -358,6 +372,7 @@ fn SearchView(
 
     let current_query = query.read().clone();
     let current_selected = selected();
+    let (ar, ag, ab) = hex_to_rgb(&accent_color);
 
     rsx! {
         // 入力欄
@@ -424,15 +439,21 @@ fn SearchView(
                 div { class: "px-6 py-3 text-neutral-500", "コマンドを入力してください" }
             } else {
                 for (i, c) in candidates.iter().enumerate() {
-                    div {
-                        key: "{i}-{c.label}",
-                        id: if current_selected == i { "selected-item" } else { "" },
-                        class: if current_selected == i {
-                            "px-6 py-3 bg-neutral-800 text-neutral-100 rounded truncate"
-                        } else {
-                            "px-6 py-3 text-neutral-400 rounded truncate"
-                        },
-                        "{c.label}"
+                    {
+                        let alpha = if current_selected == i { 0.35 } else { 0.0 };
+                        rsx! {
+                            div {
+                                key: "{i}-{c.label}",
+                                id: if current_selected == i { "selected-item" } else { "" },
+                                class: if current_selected == i {
+                                    "px-6 py-3 text-neutral-100 rounded truncate transition-colors"
+                                } else {
+                                    "px-6 py-3 text-neutral-400 rounded truncate transition-colors"
+                                },
+                                style: "background-color: rgba({ar}, {ag}, {ab}, {alpha});",
+                                "{c.label}"
+                            }
+                        }
                     }
                 }
             }
@@ -458,6 +479,20 @@ fn LlmAnswerView(llm_answer: Signal<LlmAnswerState>, view: Signal<View>) -> Elem
         LlmAnswerState::Error { question, .. } => question,
     };
 
+    // 回答が増えるたびに末尾までスクロールする
+    use_effect(move || {
+        let _ = llm_answer();
+        spawn(async move {
+            let _ = document::eval(
+                r#"
+                const el = document.getElementById('llm-answer-content');
+                if (el) { el.scrollTop = el.scrollHeight; }
+                "#,
+            )
+            .await;
+        });
+    });
+
     rsx! {
         div {
             class: "flex items-center justify-between px-6 py-5",
@@ -470,7 +505,8 @@ fn LlmAnswerView(llm_answer: Signal<LlmAnswerState>, view: Signal<View>) -> Elem
         }
 
         div {
-            class: "flex-1 overflow-y-auto px-6 py-4 whitespace-pre-wrap",
+            id: "llm-answer-content",
+            class: "flex-1 overflow-y-auto px-6 pt-6 pb-4 whitespace-pre-wrap",
             match &state {
                 LlmAnswerState::Idle => rsx! {},
                 LlmAnswerState::Loading { partial, .. } => rsx! {
@@ -510,6 +546,7 @@ fn SettingsView(
     let height = current.window.height;
     let opacity = current.window.opacity;
     let opacity_pct = ((opacity - 0.3) / (1.0 - 0.3) * 100.0).clamp(0.0, 100.0);
+    let accent_color = current.window.accent_color.clone();
     let p = current.providers.clone();
     let llm_host = current.llm.host.clone();
     let llm_model = current.llm.model.clone();
@@ -587,7 +624,7 @@ fn SettingsView(
                 input {
                     r#type: "range",
                     class: "range-slider w-full",
-                    style: "background: linear-gradient(to right, #a3a3a3 0%, #a3a3a3 {opacity_pct}%, #404040 {opacity_pct}%, #404040 100%);",
+                    style: "background: linear-gradient(to right, {accent_color} 0%, {accent_color} {opacity_pct}%, #404040 {opacity_pct}%, #404040 100%); --thumb-color: {accent_color};",
                     min: "0.3",
                     max: "1",
                     step: "0.05",
@@ -597,6 +634,18 @@ fn SettingsView(
                             cfg.write().window.opacity = v;
                         }
                     },
+                }
+            }
+
+            // アクセントカラー(選択中の候補のハイライト色)
+            div {
+                class: "flex items-center justify-between",
+                label { class: "text-sm text-neutral-400", "アクセントカラー" }
+                input {
+                    r#type: "color",
+                    class: "h-8 w-14 bg-transparent rounded cursor-pointer border border-neutral-700",
+                    value: "{accent_color}",
+                    oninput: move |e| cfg.write().window.accent_color = e.value(),
                 }
             }
 
@@ -610,6 +659,7 @@ fn SettingsView(
                         ProviderToggle {
                             label: "クリップボード履歴",
                             checked: p.clipboard,
+                            accent: accent_color.clone(),
                             on_toggle: move |v| cfg.write().providers.clipboard = v,
                         }
                         button {
@@ -625,41 +675,49 @@ fn SettingsView(
                     ProviderToggle {
                         label: "ウィンドウ切り替え",
                         checked: p.window,
+                        accent: accent_color.clone(),
                         on_toggle: move |v| cfg.write().providers.window = v,
                     }
                     ProviderToggle {
                         label: "プロジェクト",
                         checked: p.project,
+                        accent: accent_color.clone(),
                         on_toggle: move |v| cfg.write().providers.project = v,
                     }
                     ProviderToggle {
                         label: "ブックマーク",
                         checked: p.bookmark,
+                        accent: accent_color.clone(),
                         on_toggle: move |v| cfg.write().providers.bookmark = v,
                     }
                     ProviderToggle {
                         label: "スニペット",
                         checked: p.snippet,
+                        accent: accent_color.clone(),
                         on_toggle: move |v| cfg.write().providers.snippet = v,
                     }
                     ProviderToggle {
                         label: "コマンド実行",
                         checked: p.command,
+                        accent: accent_color.clone(),
                         on_toggle: move |v| cfg.write().providers.command = v,
                     }
                     ProviderToggle {
                         label: "アプリ起動",
                         checked: p.app,
+                        accent: accent_color.clone(),
                         on_toggle: move |v| cfg.write().providers.app = v,
                     }
                     ProviderToggle {
                         label: "Web検索",
                         checked: p.websearch,
+                        accent: accent_color.clone(),
                         on_toggle: move |v| cfg.write().providers.websearch = v,
                     }
                     ProviderToggle {
                         label: "AIに聞く",
                         checked: p.llm,
+                        accent: accent_color.clone(),
                         on_toggle: move |v| cfg.write().providers.llm = v,
                     }
                 }
@@ -731,7 +789,19 @@ fn SettingsView(
 
 /// トグルスイッチ1行分
 #[component]
-fn ProviderToggle(label: String, checked: bool, on_toggle: EventHandler<bool>) -> Element {
+fn ProviderToggle(
+    label: String,
+    checked: bool,
+    accent: String,
+    on_toggle: EventHandler<bool>,
+) -> Element {
+    let track_color = if checked {
+        accent
+    } else {
+        "#404040".to_string()
+    };
+    let thumb_x = if checked { "20px" } else { "0px" };
+
     rsx! {
         label {
             class: "flex items-center gap-3 cursor-pointer select-none",
@@ -744,10 +814,12 @@ fn ProviderToggle(label: String, checked: bool, on_toggle: EventHandler<bool>) -
                     onchange: move |e| on_toggle.call(e.checked()),
                 }
                 span {
-                    class: "absolute inset-0 rounded-full bg-neutral-700 peer-checked:bg-neutral-300 transition-colors",
+                    class: "absolute inset-0 rounded-full transition-colors",
+                    style: "background-color: {track_color};",
                 }
                 span {
-                    class: "absolute left-1 top-1 h-4 w-4 rounded-full bg-neutral-100 peer-checked:bg-neutral-900 transition-[transform,background-color] peer-checked:translate-x-5",
+                    class: "absolute left-1 top-1 h-4 w-4 rounded-full bg-neutral-100 transition-transform",
+                    style: "transform: translateX({thumb_x});",
                 }
             }
             span { class: "text-sm", "{label}" }
