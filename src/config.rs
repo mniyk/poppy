@@ -27,6 +27,8 @@ pub struct Window {
     pub height: f64,
     /// 背景の不透明度(0.0〜1.0)
     pub opacity: f64,
+    /// 選択中の候補のハイライト色(#rrggbb)
+    pub accent_color: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -41,6 +43,7 @@ pub struct Providers {
     pub llm: bool,
     pub clipboard: bool,
     pub command: bool,
+    pub todo: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -77,6 +80,7 @@ impl Default for Window {
             width: 800.0,
             height: 600.0,
             opacity: 0.85,
+            accent_color: "#722f37".to_string(),
         }
     }
 }
@@ -93,6 +97,7 @@ impl Default for Providers {
             llm: true,
             clipboard: true,
             command: true,
+            todo: true,
         }
     }
 }

@@ -16,14 +16,25 @@ use crate::provider::{Action, Candidate, Provider};
 use crate::providers::{
     app_launcher::AppLauncherProvider, bookmark::BookmarkProvider, clipboard,
     clipboard::ClipboardProvider, command::CommandProvider, llm::LlmProvider,
-    project::ProjectProvider, snippet::SnippetProvider, websearch::WebSearchProvider,
-    window::WindowProvider,
+    project::ProjectProvider, snippet::SnippetProvider, todo::TodoProvider,
+    websearch::WebSearchProvider, window::WindowProvider,
 };
-use crate::{bookmarks, commands, config, projects, snippets};
+use crate::{bookmarks, commands, config, projects, snippets, todos};
 
 const FAVICON: Asset = asset!("/assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
 const TAILWIND_CSS: Asset = asset!("/assets/tailwind.css");
+
+/// "#rrggbb" 形式の文字列を RGB に変換する(不正な形式ならワインレッドにフォールバック)
+fn hex_to_rgb(hex: &str) -> (u8, u8, u8) {
+    let hex = hex.trim_start_matches('#');
+    if hex.len() != 6 {
+        return (0x72, 0x2f, 0x37);
+    }
+
+    let channel = |range: std::ops::Range<usize>| u8::from_str_radix(&hex[range], 16).unwrap_or(0);
+    (channel(0..2), channel(2..4), channel(4..6))
+}
 
 /// 表示中の画面
 #[derive(Clone, Copy, PartialEq)]
@@ -61,25 +72,34 @@ pub fn App() -> Element {
     let mut llm_answer = use_signal(|| LlmAnswerState::Idle);
     let cfg = use_signal(config::load);
 
-    // クリップボード履歴(ウィンドウが隠れている間もバックグラウンドで蓄積する)
+    // クリップボード履歴(ウィンドウが隠れている間もバックグラウンドで蓄積する)。
+    // 履歴自体は Signal ではない共有データ(Rc<RefCell<..>>)なので、中身が変わった
+    // ことを App に伝えて候補一覧の再計算をトリガーするために clipboard_tick を使う
     let clipboard_history = use_hook(clipboard::new_history);
+    let mut clipboard_tick = use_signal(|| 0u32);
     use_hook({
         let clipboard_history = clipboard_history.clone();
         move || {
             spawn(async move {
                 let mut last_seen = None;
                 loop {
-                    clipboard::poll(&clipboard_history, &mut last_seen);
+                    if clipboard::poll(&clipboard_history, &mut last_seen) {
+                        clipboard_tick += 1;
+                    }
                     tokio::time::sleep(clipboard::POLL_INTERVAL).await;
                 }
             });
         }
     });
 
+    // TODO(追加・完了のたびに書き換える共有状態)
+    let todos_state = use_hook(todos::new_shared);
+
     // プロバイダ一覧(この順に候補が並ぶ。AIへの質問は常に先頭に出す)
     let mut providers = use_signal(|| {
         let list: Vec<Box<dyn Provider>> = vec![
             Box::new(LlmProvider),
+            Box::new(TodoProvider::new(todos_state.clone())),
             Box::new(ClipboardProvider::new(clipboard_history.clone())),
             Box::new(WindowProvider::new()),
             Box::new(ProjectProvider::new()),
@@ -95,6 +115,7 @@ pub fn App() -> Element {
     // 描画に使う設定値を先に取り出す(read のガードを rsx! に持ち込まない)
     let current = cfg.read().clone();
     let opacity = current.window.opacity;
+    let accent_color = current.window.accent_color.clone();
     let hotkey = current.general.hotkey.clone();
     let llm_host = current.llm.host.clone();
     let llm_model = current.llm.model.clone();
@@ -130,6 +151,7 @@ pub fn App() -> Element {
 
     let enabled = [
         current.providers.llm,
+        current.providers.todo,
         current.providers.clipboard,
         current.providers.window,
         current.providers.project,
@@ -142,6 +164,7 @@ pub fn App() -> Element {
 
     // 入力に応じた候補一覧(有効なプロバイダのみ)
     let candidates: Vec<Candidate> = {
+        let _ = clipboard_tick();
         let q = query.read().clone();
         providers
             .read()
@@ -325,6 +348,10 @@ pub fn App() -> Element {
                         view,
                         candidates: candidates.clone(),
                         ask_llm,
+                        accent_color: accent_color.clone(),
+                        todos_state: todos_state.clone(),
+                        clipboard_history: clipboard_history.clone(),
+                        clipboard_tick,
                     }
                 },
                 View::Settings => rsx! {
@@ -332,6 +359,7 @@ pub fn App() -> Element {
                         cfg,
                         view,
                         clipboard_history: clipboard_history.clone(),
+                        clipboard_tick,
                     }
                 },
                 View::LlmAnswer => rsx! {
@@ -350,14 +378,21 @@ fn SearchView(
     view: Signal<View>,
     candidates: Vec<Candidate>,
     ask_llm: Callback<String>,
+    accent_color: String,
+    todos_state: todos::SharedTodos,
+    clipboard_history: clipboard::ClipboardHistory,
+    mut clipboard_tick: Signal<u32>,
 ) -> Element {
     let window = use_window();
     let mut query = query;
     let mut selected = selected;
     let mut view = view;
+    let mut status = use_signal(String::new);
 
     let current_query = query.read().clone();
     let current_selected = selected();
+    let current_status = status.read().clone();
+    let (ar, ag, ab) = hex_to_rgb(&accent_color);
 
     rsx! {
         // 入力欄
@@ -384,6 +419,20 @@ fn SearchView(
                         return;
                     }
 
+                    // クリップボード履歴を削除(Shift併用時は "K" と報告されるため大文字小文字を無視)
+                    let is_k = matches!(&e.key(), Key::Character(c) if c.eq_ignore_ascii_case("k"));
+                    if is_k && e.modifiers().ctrl() && e.modifiers().shift() {
+                        e.prevent_default();
+                        clipboard_history.borrow_mut().clear();
+                        clipboard_tick += 1;
+                        status.set("クリップボード履歴を削除しました".to_string());
+                        spawn(async move {
+                            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                            status.set(String::new());
+                        });
+                        return;
+                    }
+
                     let len = candidates.len();
                     if len == 0 {
                         return;
@@ -399,15 +448,33 @@ fn SearchView(
                         }
                         Key::Enter => {
                             if let Some(c) = candidates.get(selected()) {
-                                if let Action::AskLlm(prompt) = c.action.clone() {
-                                    ask_llm.call(prompt);
-                                    query.set(String::new());
-                                    selected.set(0);
-                                } else {
-                                    c.action.run();
-                                    query.set(String::new());
-                                    selected.set(0);
-                                    window.set_visible(false);
+                                match c.action.clone() {
+                                    Action::AskLlm(prompt) => {
+                                        ask_llm.call(prompt);
+                                        query.set(String::new());
+                                        selected.set(0);
+                                    }
+                                    Action::AddTodo(text) => {
+                                        let id = todos::next_id(&todos_state.borrow());
+                                        todos_state
+                                            .borrow_mut()
+                                            .insert(0, todos::Todo { id, text });
+                                        let _ = todos::save(&todos_state.borrow());
+                                        query.set(String::new());
+                                        selected.set(0);
+                                    }
+                                    Action::CompleteTodo(id) => {
+                                        todos_state.borrow_mut().retain(|t| t.id != id);
+                                        let _ = todos::save(&todos_state.borrow());
+                                        query.set(String::new());
+                                        selected.set(0);
+                                    }
+                                    _ => {
+                                        c.action.run();
+                                        query.set(String::new());
+                                        selected.set(0);
+                                        window.set_visible(false);
+                                    }
                                 }
                             }
                         }
@@ -424,15 +491,21 @@ fn SearchView(
                 div { class: "px-6 py-3 text-neutral-500", "コマンドを入力してください" }
             } else {
                 for (i, c) in candidates.iter().enumerate() {
-                    div {
-                        key: "{i}-{c.label}",
-                        id: if current_selected == i { "selected-item" } else { "" },
-                        class: if current_selected == i {
-                            "px-6 py-3 bg-neutral-800 text-neutral-100 rounded truncate"
-                        } else {
-                            "px-6 py-3 text-neutral-400 rounded truncate"
-                        },
-                        "{c.label}"
+                    {
+                        let alpha = if current_selected == i { 0.35 } else { 0.0 };
+                        rsx! {
+                            div {
+                                key: "{i}-{c.label}",
+                                id: if current_selected == i { "selected-item" } else { "" },
+                                class: if current_selected == i {
+                                    "px-6 py-3 text-neutral-100 rounded truncate transition-colors"
+                                } else {
+                                    "px-6 py-3 text-neutral-400 rounded truncate transition-colors"
+                                },
+                                style: "background-color: rgba({ar}, {ag}, {ab}, {alpha});",
+                                "{c.label}"
+                            }
+                        }
                     }
                 }
             }
@@ -441,7 +514,11 @@ fn SearchView(
         // フッター
         div {
             class: "px-6 py-2 text-xs text-neutral-600 text-right",
-            "Ctrl+, で設定"
+            if current_status.is_empty() {
+                "Ctrl+, で設定  /  Ctrl+Shift+K でクリップボード履歴を削除"
+            } else {
+                "{current_status}"
+            }
         }
     }
 }
@@ -458,6 +535,20 @@ fn LlmAnswerView(llm_answer: Signal<LlmAnswerState>, view: Signal<View>) -> Elem
         LlmAnswerState::Error { question, .. } => question,
     };
 
+    // 回答が増えるたびに末尾までスクロールする
+    use_effect(move || {
+        let _ = llm_answer();
+        spawn(async move {
+            let _ = document::eval(
+                r#"
+                const el = document.getElementById('llm-answer-content');
+                if (el) { el.scrollTop = el.scrollHeight; }
+                "#,
+            )
+            .await;
+        });
+    });
+
     rsx! {
         div {
             class: "flex items-center justify-between px-6 py-5",
@@ -470,7 +561,8 @@ fn LlmAnswerView(llm_answer: Signal<LlmAnswerState>, view: Signal<View>) -> Elem
         }
 
         div {
-            class: "flex-1 overflow-y-auto px-6 py-4 whitespace-pre-wrap",
+            id: "llm-answer-content",
+            class: "flex-1 overflow-y-auto px-6 pt-6 pb-4 whitespace-pre-wrap",
             match &state {
                 LlmAnswerState::Idle => rsx! {},
                 LlmAnswerState::Loading { partial, .. } => rsx! {
@@ -497,6 +589,7 @@ fn SettingsView(
     cfg: Signal<config::Config>,
     view: Signal<View>,
     clipboard_history: clipboard::ClipboardHistory,
+    mut clipboard_tick: Signal<u32>,
 ) -> Element {
     let mut cfg = cfg;
     let mut view = view;
@@ -510,6 +603,7 @@ fn SettingsView(
     let height = current.window.height;
     let opacity = current.window.opacity;
     let opacity_pct = ((opacity - 0.3) / (1.0 - 0.3) * 100.0).clamp(0.0, 100.0);
+    let accent_color = current.window.accent_color.clone();
     let p = current.providers.clone();
     let llm_host = current.llm.host.clone();
     let llm_model = current.llm.model.clone();
@@ -587,7 +681,7 @@ fn SettingsView(
                 input {
                     r#type: "range",
                     class: "range-slider w-full",
-                    style: "background: linear-gradient(to right, #a3a3a3 0%, #a3a3a3 {opacity_pct}%, #404040 {opacity_pct}%, #404040 100%);",
+                    style: "background: linear-gradient(to right, {accent_color} 0%, {accent_color} {opacity_pct}%, #404040 {opacity_pct}%, #404040 100%); --thumb-color: {accent_color};",
                     min: "0.3",
                     max: "1",
                     step: "0.05",
@@ -597,6 +691,18 @@ fn SettingsView(
                             cfg.write().window.opacity = v;
                         }
                     },
+                }
+            }
+
+            // アクセントカラー(選択中の候補のハイライト色)
+            div {
+                class: "flex items-center justify-between",
+                label { class: "text-sm text-neutral-400", "アクセントカラー" }
+                input {
+                    r#type: "color",
+                    class: "h-8 w-14 bg-transparent rounded cursor-pointer border border-neutral-700",
+                    value: "{accent_color}",
+                    oninput: move |e| cfg.write().window.accent_color = e.value(),
                 }
             }
 
@@ -610,6 +716,7 @@ fn SettingsView(
                         ProviderToggle {
                             label: "クリップボード履歴",
                             checked: p.clipboard,
+                            accent: accent_color.clone(),
                             on_toggle: move |v| cfg.write().providers.clipboard = v,
                         }
                         button {
@@ -617,6 +724,7 @@ fn SettingsView(
                             disabled: clipboard_count == 0,
                             onclick: move |_| {
                                 clipboard_history.borrow_mut().clear();
+                                clipboard_tick += 1;
                                 message.set("クリップボード履歴を削除しました".to_string());
                             },
                             "履歴を削除 ({clipboard_count}件)"
@@ -625,42 +733,56 @@ fn SettingsView(
                     ProviderToggle {
                         label: "ウィンドウ切り替え",
                         checked: p.window,
+                        accent: accent_color.clone(),
                         on_toggle: move |v| cfg.write().providers.window = v,
                     }
                     ProviderToggle {
                         label: "プロジェクト",
                         checked: p.project,
+                        accent: accent_color.clone(),
                         on_toggle: move |v| cfg.write().providers.project = v,
                     }
                     ProviderToggle {
                         label: "ブックマーク",
                         checked: p.bookmark,
+                        accent: accent_color.clone(),
                         on_toggle: move |v| cfg.write().providers.bookmark = v,
                     }
                     ProviderToggle {
                         label: "スニペット",
                         checked: p.snippet,
+                        accent: accent_color.clone(),
                         on_toggle: move |v| cfg.write().providers.snippet = v,
                     }
                     ProviderToggle {
                         label: "コマンド実行",
                         checked: p.command,
+                        accent: accent_color.clone(),
                         on_toggle: move |v| cfg.write().providers.command = v,
                     }
                     ProviderToggle {
                         label: "アプリ起動",
                         checked: p.app,
+                        accent: accent_color.clone(),
                         on_toggle: move |v| cfg.write().providers.app = v,
                     }
                     ProviderToggle {
                         label: "Web検索",
                         checked: p.websearch,
+                        accent: accent_color.clone(),
                         on_toggle: move |v| cfg.write().providers.websearch = v,
                     }
                     ProviderToggle {
                         label: "AIに聞く",
                         checked: p.llm,
+                        accent: accent_color.clone(),
                         on_toggle: move |v| cfg.write().providers.llm = v,
+                    }
+                    ProviderToggle {
+                        label: "TODO",
+                        checked: p.todo,
+                        accent: accent_color.clone(),
+                        on_toggle: move |v| cfg.write().providers.todo = v,
                     }
                 }
             }
@@ -731,7 +853,19 @@ fn SettingsView(
 
 /// トグルスイッチ1行分
 #[component]
-fn ProviderToggle(label: String, checked: bool, on_toggle: EventHandler<bool>) -> Element {
+fn ProviderToggle(
+    label: String,
+    checked: bool,
+    accent: String,
+    on_toggle: EventHandler<bool>,
+) -> Element {
+    let track_color = if checked {
+        accent
+    } else {
+        "#404040".to_string()
+    };
+    let thumb_x = if checked { "20px" } else { "0px" };
+
     rsx! {
         label {
             class: "flex items-center gap-3 cursor-pointer select-none",
@@ -744,10 +878,12 @@ fn ProviderToggle(label: String, checked: bool, on_toggle: EventHandler<bool>) -
                     onchange: move |e| on_toggle.call(e.checked()),
                 }
                 span {
-                    class: "absolute inset-0 rounded-full bg-neutral-700 peer-checked:bg-neutral-300 transition-colors",
+                    class: "absolute inset-0 rounded-full transition-colors",
+                    style: "background-color: {track_color};",
                 }
                 span {
-                    class: "absolute left-1 top-1 h-4 w-4 rounded-full bg-neutral-100 peer-checked:bg-neutral-900 transition-[transform,background-color] peer-checked:translate-x-5",
+                    class: "absolute left-1 top-1 h-4 w-4 rounded-full bg-neutral-100 transition-transform",
+                    style: "transform: translateX({thumb_x});",
                 }
             }
             span { class: "text-sm", "{label}" }

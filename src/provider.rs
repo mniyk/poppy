@@ -14,6 +14,11 @@ pub enum Action {
     AskLlm(String),
     /// シェルコマンドを実行する(confirm が true なら実行前に確認ダイアログを出す)
     RunCommand { command: String, confirm: bool },
+    /// TODO を追加する(状態を持つため、UI側でEnter入力時に
+    /// 特別扱いして実行する。run() からは呼ばれない)
+    AddTodo(String),
+    /// TODO を完了にする(同上)
+    CompleteTodo(u64),
 }
 
 impl Action {
@@ -39,6 +44,8 @@ impl Action {
                 }
             }
             Action::AskLlm(_) => {}
+            Action::AddTodo(_) => {}
+            Action::CompleteTodo(_) => {}
             Action::RunCommand { command, confirm } => {
                 if *confirm && !confirm_dialog(command) {
                     return;
