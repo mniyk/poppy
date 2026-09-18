@@ -114,6 +114,7 @@ pub fn App() -> Element {
     let mut providers = use_signal(|| {
         let list: Vec<Box<dyn Provider>> = vec![
             Box::new(LlmProvider),
+            Box::new(WebSearchProvider),
             Box::new(TodoProvider::new(todos_state.clone())),
             Box::new(WindowProvider::new()),
             Box::new(ProjectProvider::new()),
@@ -121,7 +122,6 @@ pub fn App() -> Element {
             Box::new(SnippetProvider::new()),
             Box::new(CommandProvider::new()),
             Box::new(AppLauncherProvider::new(store_apps.clone())),
-            Box::new(WebSearchProvider),
             // 最大30件出うるので、他の候補が埋もれないよう最後に置く
             Box::new(ClipboardProvider::new(clipboard_history.clone())),
         ];
