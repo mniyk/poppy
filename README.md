@@ -38,7 +38,7 @@ Config files live here:
     %APPDATA%\poppy\config\
 
 Starter files are created on first launch. You can also open them from Poppy itself —
-open **Settings** (`Ctrl+,`) and click the config file you want under "設定ファイル".
+open **Settings** (`Ctrl+,`) and click the config file you want under "Config Files".
 
 Edits take effect the next time you summon Poppy.
 
@@ -52,15 +52,15 @@ Edits take effect the next time you summon Poppy.
 ### snippets.toml
 
     [[snippet]]
-    name = "メール署名"
+    name = "Email signature"
     content = "Yohei Kono"
     keywords = ["sig", "signature"]
 
-`content`を複数行にしたい場合は、TOMLのトリプルクォート(`"""..."""`)を使ってください。
-普通の`"..."`の中には実際の改行を直接書けません。
+To make `content` span multiple lines, use TOML triple quotes (`"""..."""`).
+A regular `"..."` string can't contain a literal newline.
 
     [[snippet]]
-    name = "print関数"
+    name = "print function"
     content = """
     def print():
         print("test")
@@ -82,7 +82,7 @@ Opening a project requires the `code` command to be on your PATH
 ### commands.toml
 
     [[command]]
-    name = "ごみ箱を空にする"
+    name = "Empty Recycle Bin"
     command = "powershell -Command Clear-RecycleBin -Force"
     confirm = true
     keywords = ["trash", "recycle"]
@@ -94,8 +94,8 @@ before running it. Defaults to `false`.
 ### Todos
 
 Type anything and the top result offers to add it as a todo. On an empty query, existing
-todos show up as "TODO の「〜」を完了にする" — press `Enter` on one to mark it done (it's
-removed from the list).
+todos show up as candidates offering to mark them done — press `Enter` on one to mark it
+done (it's removed from the list).
 
 Unlike the other config files, `todos.toml` is managed by Poppy itself as you add and
 complete todos — you don't need to edit it by hand.
